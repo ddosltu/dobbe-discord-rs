@@ -8,6 +8,18 @@ Because rust is fun.
 ## Commands
 - role: Join courserooms
 - courseroom: Administer courseroom roles and discord channels
-- 
+- rules: Administer reaction rules roles
 
 Saves channel and role ids in an Postgres database
+
+table! {
+    Guilds {
+        rules_channel_id,
+        rules_accepted_role-id,
+        Courserooms {
+            name,
+            channel_id,
+            role_id
+        }
+    }
+}

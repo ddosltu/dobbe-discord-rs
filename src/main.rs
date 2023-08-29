@@ -7,9 +7,11 @@ use serenity::model::gateway::Ready;
 use serenity::prelude::*;
 
 use crate::commands::ping::*;
+use crate::commands::rules::*;
 
 #[group]
-#[commands(ping)]
+#[only_in(guilds)]
+#[commands(ping, rules)]
 struct General;
 
 struct Handler;
@@ -29,18 +31,20 @@ impl EventHandler for Handler {
 
 #[tokio::main]
 async fn main() {
-    let framework = StandardFramework::new()
-        .configure(|c| c.prefix("*")) // set the bot's prefix
-        .group(&GENERAL_GROUP);
 
     // Configure the client with your Discord bot token in the environment.
     dotenv::dotenv().expect("Could not read .env");
     let token = dotenv::var("DISCORD_TOKEN").expect("Expected a token in .env");
     
+    let framework = StandardFramework::new()
+                        .configure(|c| c.prefix("*")) // set the bot's prefix
+                        .group(&GENERAL_GROUP);
+
     // Set gateway intents, which decides what events the bot will be notified about
     let intents = GatewayIntents::GUILD_MESSAGES
                 | GatewayIntents::DIRECT_MESSAGES
-                | GatewayIntents::MESSAGE_CONTENT;
+                | GatewayIntents::MESSAGE_CONTENT
+                | GatewayIntents::GUILD_MESSAGE_REACTIONS;
 
     // Create a new instance of the Client, logging in as a bot. This will
     // automatically prepend your bot token with "Bot ", which is a requirement
@@ -48,6 +52,7 @@ async fn main() {
     let mut client =
         Client::builder(&token, intents)
         .event_handler(Handler)
+        .event_handler(RulesHandler)
         .framework(framework)
         .await
         .expect("Err creating client");
