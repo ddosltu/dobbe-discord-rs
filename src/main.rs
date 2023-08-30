@@ -1,4 +1,5 @@
 mod commands;
+mod data;
 
 use serenity::async_trait;
 use serenity::framework::StandardFramework;

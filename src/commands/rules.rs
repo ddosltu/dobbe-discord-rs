@@ -2,35 +2,8 @@ use serenity::framework::standard::{Args, CommandResult};
 use serenity::framework::standard::macros::command;
 use serenity::model::prelude::*;
 use serenity::{prelude::*, async_trait};
-use serde::{Deserialize, Serialize};
-use std::fs;
 
-#[derive(Serialize, Deserialize)]
-pub struct RulesConfig {
-    rules_role_id: Option<RoleId>
-}
-
-const RULES_CONFIG_PATH: &str = "rules_config.toml";
-
-fn read_config(path: &str) -> Result<RulesConfig, Box<dyn std::error::Error>> {    
-    if let Ok(data) = fs::read(path) {
-        let text = String::from_utf8(data)?;
-        let config: RulesConfig = toml::from_str(&text)?;
-        Ok(config)
-    } else {
-        Ok(
-            RulesConfig {
-                rules_role_id: None
-            }
-        )
-    }
-}
-
-fn write_config(config: &RulesConfig, path: &str) -> Result<(), Box<dyn std::error::Error>> {
-    let text = toml::to_string(config)?;
-    std::fs::write(path, text)?;
-    Ok(())
-}
+use crate::data::{get_guild_config, write_guild_config};
 
 #[command]
 #[required_permissions(ADMINISTRATOR)]
@@ -40,28 +13,29 @@ async fn rules(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
         msg.reply(&ctx, "Wrong usage!").await?;
     };
 
-    if let Ok(guild) = Guild::get(&ctx, msg.guild_id.unwrap()).await  {
-        match args.single_quoted::<String>() {
-            Ok(x) => {
-                match x.as_str() {
-                    "role" => {
-                        let role_name = args.rest();
-                        if let Some(role) = guild.role_by_name(role_name) {
-                            if let Ok(mut config) = read_config(RULES_CONFIG_PATH) {
-                                config.rules_role_id = Some(role.id);
-                                write_config(&config, RULES_CONFIG_PATH)
-                                    .expect("Failed to write rules config");
-                            }
-                        } 
-                    },
-                    _ => {}
+    let guild_id = msg.guild_id.expect("Could not find guild id");
+    let guild = Guild::get(&ctx, guild_id).await.expect("Could not find guild");
+    
+    match args.single_quoted::<String>() {
+        Ok(x) => {
+            match x.as_str() {
+                "role" => {
+                    let role_name = args.rest();
+                    if let Some(role) = guild.role_by_name(role_name) {
+                        if let Ok(mut config) = get_guild_config(&guild_id) {
+                            config.rules_role_id = Some(role.id);
+                            write_guild_config(&guild_id, &config).expect("Error writing config");
+                        }
+                    } 
+                },
+                _ => {
+                    msg.reply(&ctx, "Unknown argument!").await?;
                 }
             }
-            Err(_) => {
-                msg.reply(&ctx, "Error!").await?;
-            }
-        };
-    
+        }
+        Err(_) => {
+            msg.reply(&ctx, "Could not parse arguments").await?;
+        }
     }
 
     Ok(())
@@ -73,21 +47,20 @@ pub struct RulesHandler;
 impl EventHandler for RulesHandler {
     async fn reaction_add(&self, ctx: Context, reaction: Reaction) {
         println!("Handling an reaction_add");
-        if let Ok(guild) = Guild::get(&ctx, reaction.guild_id.unwrap()).await  {
-            println!("Found guild");
+        
+        let guild_id = reaction.guild_id.expect("Could not find guild id");
+        let guild = Guild::get(&ctx, guild_id).await.expect("Could not find guild");
+        
+        let rules_channel_id = guild.rules_channel_id.expect("Could not find rules channel");
+        let role = get_guild_config(&guild_id).unwrap().rules_role_id.expect("Could not get role id");
 
-            let rules_channel_id = guild.rules_channel_id.expect("Could not find rules channel");
-            let role = read_config(RULES_CONFIG_PATH).unwrap().rules_role_id.expect("Could not get role id");
-
-            if reaction.channel_id.eq(&rules_channel_id) {
-                if let Some(user_id) = reaction.user_id {
-                    if let Ok(mut member) = guild.member(&ctx, user_id).await {
-                        member.add_role(&ctx, role).await.unwrap();
-                        println!("Gave {} the role {}", member.display_name(), role.to_string())
-                    }
+        if reaction.channel_id.eq(&rules_channel_id) {
+            if let Some(user_id) = reaction.user_id {
+                if let Ok(mut member) = guild.member(&ctx, user_id).await {
+                    member.add_role(&ctx, role).await.unwrap();
+                    println!("Gave {} the role {}", member.display_name(), role.to_string())
                 }
             }
-
         }
     }
 }
